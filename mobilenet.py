@@ -67,19 +67,19 @@ def get_model(input_shape, num_classes):
     resize = Lambda(lambda image: ktf.image.resize_images(image, (128, 128)))(inp)
     mobnet = MobileNet(input_shape=(128, 128, 3), alpha=1.0, depth_multiplier=1, dropout=1e-3,
                        include_top=False, weights='imagenet', input_tensor=resize)
-    #mobnet.trainable = False
     for layer in mobnet.layers:
         layer.trainable = False
+        if isinstance(layer, keras.layers.normalization.BatchNormalization):
+            layer._per_input_updates = {}
     mobnet_output = mobnet.output
 
     x = GlobalAveragePooling2D()(mobnet_output)
     x = Dense(num_classes, activation='relu')(x)
     predictions = Dense(num_classes, activation='softmax')(x)
-
     model = Model(inputs=mobnet.input, outputs=predictions)
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
-    return model, mobnet
+    return model
 
 
 def print_model_summary(models):
@@ -88,41 +88,46 @@ def print_model_summary(models):
         print_trainable_summary(model)
 
 
-def main():
-    (x_train, y_train), (x_test, y_test) = load_data()
-    print(x_train.shape[0], 'train samples')
-    print(x_test.shape[0], 'test samples')
-
-    model, mobnet = get_model(input_shape=x_train[0].shape, num_classes=y_train.shape[1])
-    model.summary()
-    print_model_summary([('MobileNet', mobnet),
-                         ('MobileNet.layers[-2]', mobnet.layers[-2]),
-                         ('Final Model', model)])
-    layer_weights1 = np.array(list(flatten(K.batch_get_value(mobnet.layers[-2].non_trainable_weights))))
+def train(model, (x_train, y_train), (x_test, y_test)):
+    before_weights = {}
+    for layer in model.layers:
+        weights = layer.get_weights()
+        before_weights[layer.name] = [np.array(list(flatten(p))) for p in weights]
 
     batch_size = 256
     epochs = 1
-    '''
     print("training one batch ...")
     model.train_on_batch(x_train[:batch_size], y_train[:batch_size])
     '''
     model.fit(x_train, y_train,
               batch_size=batch_size,
               epochs=epochs,
-              verbose=1,
               validation_data=(x_test, y_test))
+    '''
     '''
     score = model.evaluate(x_test, y_test, verbose=0)
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
     '''
-    print_model_summary([('MobileNet', mobnet),
-                         ('MobileNet.layers[-2]', mobnet.layers[-2]),
-                         ('Final Model', model)])
-    layer_weights2 = np.array(list(flatten(K.batch_get_value(mobnet.layers[-2].non_trainable_weights))))
 
-    print("compare MobileNet.layers[-2] before and after training")
-    print(np.histogram(layer_weights1 - layer_weights2))
+    print("compare weights before and after training")
+    for layer in model.layers:
+        print(layer.name, type(layer), isinstance(layer, keras.layers.normalization.BatchNormalization))
+        weights = layer.get_weights()
+        for a, b in zip([np.array(list(flatten(p))) for p in weights], before_weights[layer.name]):
+            if np.array_equiv(a, b):
+                print(" array_equiv")
+            else:
+                print(np.histogram(a - b))
+
+
+def main():
+    (x_train, y_train), (x_test, y_test) = load_data()
+    print(x_train.shape[0], 'train samples')
+    print(x_test.shape[0], 'test samples')
+
+    model = get_model(input_shape=x_train[0].shape, num_classes=y_train.shape[1])
+    train(model, (x_train, y_train), (x_test, y_test))
 
 
 if __name__ == '__main__':
