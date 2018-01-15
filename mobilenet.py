@@ -55,9 +55,6 @@ def load_data():
     x_test = x_test.astype('float32')
     x_train /= 255
     x_test /= 255
-    print('x_train shape:', x_train.shape, 'mean:', x_train.mean())
-    print(x_train.shape[0], 'train samples')
-    print(x_test.shape[0], 'test samples')
 
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
@@ -65,21 +62,15 @@ def load_data():
     return (x_train, y_train), (x_test, y_test)
 
 
-def get_model((x_train, y_train), (x_test, y_test)):
-    num_classes = y_train.shape[1]
-    input_shape = x_train[0].shape
+def get_model(input_shape, num_classes):
     inp = Input(shape=input_shape)
     resize = Lambda(lambda image: ktf.image.resize_images(image, (128, 128)))(inp)
     mobnet = MobileNet(input_shape=(128, 128, 3), alpha=1.0, depth_multiplier=1, dropout=1e-3,
-                    include_top=False, weights='imagenet', input_tensor=resize)
+                       include_top=False, weights='imagenet', input_tensor=resize)
     #mobnet.trainable = False
     for layer in mobnet.layers:
         layer.trainable = False
     mobnet_output = mobnet.output
-    print("MobileNet")
-    print_trainable_summary(mobnet)
-    print("MobileNet.layers[-2]")
-    print_trainable_summary(mobnet.layers[-2])
 
     x = GlobalAveragePooling2D()(mobnet_output)
     x = Dense(num_classes, activation='relu')(x)
@@ -88,14 +79,26 @@ def get_model((x_train, y_train), (x_test, y_test)):
     model = Model(inputs=mobnet.input, outputs=predictions)
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
-    print("Model")
-    print_trainable_summary(model)
     return model, mobnet
+
+
+def print_model_summary(models):
+    for name, model in models:
+        print(name)
+        print_trainable_summary(model)
 
 
 def main():
     (x_train, y_train), (x_test, y_test) = load_data()
-    model, mobnet = get_model((x_train, y_train), (x_test, y_test))
+    print(x_train.shape[0], 'train samples')
+    print(x_test.shape[0], 'test samples')
+
+    model, mobnet = get_model(input_shape=x_train[0].shape, num_classes=y_train.shape[1])
+    model.summary()
+    print_model_summary([('MobileNet', mobnet),
+                         ('MobileNet.layers[-2]', mobnet.layers[-2]),
+                         ('Final Model', model)])
+    layer_weights1 = np.array(list(flatten(K.batch_get_value(mobnet.layers[-2].non_trainable_weights))))
 
     batch_size = 256
     epochs = 1
@@ -104,21 +107,22 @@ def main():
     model.train_on_batch(x_train[:batch_size], y_train[:batch_size])
     '''
     model.fit(x_train, y_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            verbose=1,
-            validation_data=(x_test, y_test))
+              batch_size=batch_size,
+              epochs=epochs,
+              verbose=1,
+              validation_data=(x_test, y_test))
+    '''
     score = model.evaluate(x_test, y_test, verbose=0)
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
+    '''
+    print_model_summary([('MobileNet', mobnet),
+                         ('MobileNet.layers[-2]', mobnet.layers[-2]),
+                         ('Final Model', model)])
+    layer_weights2 = np.array(list(flatten(K.batch_get_value(mobnet.layers[-2].non_trainable_weights))))
 
-    print("MobileNet")
-    print_trainable_summary(mobnet)
-    print("MobileNet.layers[-2]")
-    print_trainable_summary(mobnet.layers[-2])
-
-    print("Model")
-    print_trainable_summary(model)
+    print("compare MobileNet.layers[-2] before and after training")
+    print(np.histogram(layer_weights1 - layer_weights2))
 
 
 if __name__ == '__main__':
