@@ -6,6 +6,7 @@ from keras.datasets import mnist
 from keras.models import Model
 from keras.layers import Dense, Lambda, Input, GlobalAveragePooling2D
 from keras.backend import tf as ktf
+from keras import regularizers
 
 
 def load_data():
@@ -18,8 +19,8 @@ def load_data():
     x_train = np.repeat(x_train, 3, axis=3)
     x_test = np.repeat(x_test, 3, axis=3)
 
-    x_train = x_train.astype('float32')/255.
-    x_test = x_test.astype('float32')/255.
+    x_train = x_train.astype('float32') / 255.
+    x_test = x_test.astype('float32') / 255.
 
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
@@ -38,7 +39,9 @@ def get_model(input_shape, num_classes):
             layer._per_input_updates = {}
 
     x = GlobalAveragePooling2D()(mobnet.output)
-    x = Dense(num_classes, activation='relu')(x)
+    x = Dense(num_classes * 2, activation='relu',
+              kernel_regularizer=regularizers.l2(1e-4),
+              activity_regularizer=regularizers.l1(1e-4))(x)
     predictions = Dense(num_classes, activation='softmax')(x)
     model = Model(inputs=mobnet.input, outputs=predictions)
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
