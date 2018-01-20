@@ -36,6 +36,7 @@ def get_model(input_shape, num_classes):
         layer.trainable = False
         if isinstance(layer, keras.layers.normalization.BatchNormalization):
             layer._per_input_updates = {}
+
     x = GlobalAveragePooling2D()(mobnet.output)
     x = Dense(num_classes, activation='relu')(x)
     predictions = Dense(num_classes, activation='softmax')(x)
