@@ -36,9 +36,7 @@ def get_model(input_shape, num_classes):
         layer.trainable = False
         if isinstance(layer, keras.layers.normalization.BatchNormalization):
             layer._per_input_updates = {}
-    mobnet_output = mobnet.output
-
-    x = GlobalAveragePooling2D()(mobnet_output)
+    x = GlobalAveragePooling2D()(mobnet.output)
     x = Dense(num_classes, activation='relu')(x)
     predictions = Dense(num_classes, activation='softmax')(x)
     model = Model(inputs=mobnet.input, outputs=predictions)
@@ -48,7 +46,7 @@ def get_model(input_shape, num_classes):
 
 def train(model, (x_train, y_train), (x_test, y_test)):
     batch_size = 256
-    epochs = 1
+    epochs = 10
     model.fit(x_train, y_train,
               batch_size=batch_size,
               epochs=epochs,
